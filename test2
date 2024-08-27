@@ -1,0 +1,208 @@
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class PDFGenerator {
+
+    // Define the GeneratePDFRequestVo class
+    public static class GeneratePDFRequestVo {
+        private String applicationId;
+        private HashMap<String, String> formData;
+        private ArrayList<SignerInfo> moreSigners;
+        private FlatternForm flattenForm;
+
+        public GeneratePDFRequestVo(String applicationId, HashMap<String, String> formData, ArrayList<SignerInfo> moreSigners, FlatternForm flattenForm) {
+            this.applicationId = applicationId;
+            this.formData = formData;
+            this.moreSigners = moreSigners;
+            this.flattenForm = flattenForm;
+        }
+
+        public String getApplicationId() {
+            return applicationId;
+        }
+
+        public HashMap<String, String> getFormData() {
+            return formData;
+        }
+
+        public ArrayList<SignerInfo> getMoreSigners() {
+            return moreSigners;
+        }
+
+        public FlatternForm getFlatternForm() {
+            return flattenForm;
+        }
+
+        public static class SignerInfo {
+            private String signCode;
+            private String signName;
+            private String signID;
+            private String signatureDetails;
+
+            public SignerInfo(String signCode, String signName, String signID, String signatureDetails) {
+                this.signCode = signCode;
+                this.signName = signName;
+                this.signID = signID;
+                this.signatureDetails = signatureDetails;
+            }
+
+            public String getSignCode() {
+                return signCode;
+            }
+
+            public String getSignName() {
+                return signName;
+            }
+
+            public String getSignID() {
+                return signID;
+            }
+
+            public String getSignatureDetails() {
+                return signatureDetails;
+            }
+        }
+
+        public static class FlatternForm {
+            private String shouldFlatternFormData;
+            private String flatternFalg;
+            private HashMap<String, String> flatternNodes;
+
+            public FlatternForm(String shouldFlatternFormData, String flatternFalg, HashMap<String, String> flatternNodes) {
+                this.shouldFlatternFormData = shouldFlatternFormData;
+                this.flatternFalg = flatternFalg;
+                this.flatternNodes = flatternNodes;
+            }
+
+            public String getShouldFlatternFormData() {
+                return shouldFlatternFormData;
+            }
+
+            public String getFlatternFalg() {
+                return flatternFalg;
+            }
+
+            public HashMap<String, String> getFlatternNodes() {
+                return flatternNodes;
+            }
+        }
+    }
+
+    // Method to generate the test JSON
+    public static Map<String, Object> generateTestJson(GeneratePDFRequestVo requestVo) {
+        Map<String, Object> testjson = new HashMap<>();
+
+        // Directly copy relevant fields
+        testjson.put("applicationId", requestVo.getApplicationId());
+        testjson.put("templateId", "ACO_Offline_Sign_Signature_Card_Form-zh_hk-v1");
+        testjson.put("isRecycledTemplate", "Yes");
+        testjson.put("fileBusinessType", "ACO_Offline_Sign_Signature_Card_Form");
+        testjson.put("templateLanguage", "zh_hk");
+        testjson.put("templateVersion", "v2");
+        testjson.put("templateType", "PDF");
+
+        // Initialize formData as an empty list
+        List<Map<String, String>> formDataList = new ArrayList<>();
+
+        // Process the formData
+        Map<String, String> formData = requestVo.getFormData();
+        boolean shouldFlatten = "Yes".equals(requestVo.getFlatternForm().getShouldFlatternFormData());
+        
+        if (shouldFlatten) {
+            List<GeneratePDFRequestVo.SignerInfo> moreSigners = requestVo.getMoreSigners();
+            String flattenFlag = requestVo.getFlatternForm().getFlatternFalg();
+            int maxFlattenIndexPerPage = Integer.parseInt(requestVo.getFlatternForm().getFlatternNodes().get("maxFlatternIndexPerPage"));
+
+            int signerIndex = 5;
+            int numPages = (int) Math.ceil((double) moreSigners.size() / maxFlattenIndexPerPage);
+
+            for (int pageIndex = 1; pageIndex <= numPages; pageIndex++) {
+                Map<String, String> pageFormData = new HashMap<>(formData);
+                int startIndex = (pageIndex - 1) * maxFlattenIndexPerPage;
+                int endIndex = Math.min(startIndex + maxFlattenIndexPerPage, moreSigners.size());
+
+                for (int i = startIndex; i < endIndex; i++) {
+                    GeneratePDFRequestVo.SignerInfo signer = moreSigners.get(i);
+                    int currentSignerIndex = signerIndex++;
+                    pageFormData.put("SIGN019_" + (i - startIndex + 1), signer.getSignName());
+                    pageFormData.put("SIGN020_" + (i - startIndex + 1), signer.getSignID());
+                    pageFormData.put("SIGN021_" + (i - startIndex + 1), "SIGN021: ID Document No. " + (i + 1));
+                    pageFormData.put("SIGN022_" + (i - startIndex + 1), signer.getSignatureDetails().replace(":signer:", ":signer" + currentSignerIndex + ":"));
+                }
+                
+                pageFormData.put("currentPageNo", String.valueOf(pageIndex));
+                pageFormData.put("pageTotalNo", String.valueOf(numPages));
+                pageFormData.put("applyDate", formData.get("SIGN002"));
+                
+                formDataList.add(pageFormData);
+            }
+        } else {
+            // No flattening needed, just add the original formData
+            Map<String, String> singlePageFormData = new HashMap<>(formData);
+            singlePageFormData.put("currentPageNo", "1");
+            singlePageFormData.put("pageTotalNo", "1");
+            singlePageFormData.put("applyDate", formData.get("SIGN002"));
+            formDataList.add(singlePageFormData);
+        }
+
+        testjson.put("formData", formDataList);
+
+        return testjson;
+    }
+
+    // Method to print JSON
+    public static void printJson(Map<String, Object> jsonMap) throws JsonProcessingException {
+        ObjectMapper mapper = new ObjectMapper();
+        String jsonString = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonMap);
+        System.out.println(jsonString);
+    }
+
+    public static void main(String[] args) throws JsonProcessingException {
+        // Sample data
+        HashMap<String, String> formData = new HashMap<>();
+        formData.put("SIGN002", "25-07-2024");
+        formData.put("SIGN003", "SIGN003: Account No Multi-line");
+        formData.put("SIGN004", "SIGN004: Referral Account (if applicable)");
+        formData.put("SIGN005", "SIGN005: Name in English: SignaturecardPageFlag");
+        formData.put("SIGN006", "SIGN006: Name in Chinese ¥itk+");
+        formData.put("SIGN008", "10");
+        formData.put("SIGN010", "25");
+        formData.put("SIGN014", "Yes");
+        formData.put("SIGN017a", "");
+        formData.put("SIGN017_START_FLAG", "[(*CHOP_SPECIMEN_CITS)]");
+        formData.put("SIGN017", "(f*Stamp1234567890123309812368_es_:signer:stampimage(13)");
+        formData.put("SIGN024_StaffSign", "((BigSig_es_:signer:signature:dimension(width=5cm,height=1cm)])");
+        formData.put("SIGN024_StaffSignDate", "([Dte_es_:signer:date])");
+        formData.put("SIGN024_StaffName", "(fInput_es_:signer])");
+        formData.put("SIGN024_StaffSignCode", "ffInput_es_:signer))");
+
+        ArrayList<GeneratePDFRequestVo.SignerInfo> moreSigners = new ArrayList<>();
+        moreSigners.add(new GeneratePDFRequestVo.SignerInfo("SIGN019", "Name 01", "HKID", "(fBigsig_es_:signer:signature:dimension(width=8cm, height=2.5cm))"));
+        moreSigners.add(new GeneratePDFRequestVo.SignerInfo("SIGN019", "Vilit W Wu", "W123456(7)", "((BigSig_es_:signer:signature:dimension(width=8cm, height=2.5cm))"));
+        moreSigners.add(new GeneratePDFRequestVo.SignerInfo("SIGN019", "Name 03", "SIGN020_Others", "(fBigSig_es_:signer:signature:dimension(width=8cm, height=2.5cm))"));
+        moreSigners.add(new GeneratePDFRequestVo.SignerInfo("SIGN019", "Name 04", "Others", "(fBigSig_es_:signer:signature:dimension(width=8cm, height=2.5cm))"));
+        moreSigners.add(new GeneratePDFRequestVo.SignerInfo("SIGN019", "Name 05", "TravelDocument", "((Bigsig_es_:signer:signature:dimension(width=12cm, height=3.5cm)))"));
+        moreSigners.add(new GeneratePDFRequestVo.SignerInfo("SIGN019", "Name 06", "HKID", "((Bigsig_es_:signer:signature:dimension(width=12cm, height=3.5cm)))"));
+
+        HashMap<String, String> flattenNodes = new HashMap<>();
+        flattenNodes.put("maxFlatternIndexPerPage", "4");
+        flattenNodes.put("node", "/fromData/moreSigners");
+        flattenNodes.put("appendPageNosPerPage", "Yes");
+
+        GeneratePDFRequestVo.FlatternForm flattenForm = new GeneratePDFRequestVo.FlatternForm("Yes", "_", flattenNodes);
+
+        GeneratePDFRequestVo requestVo = new GeneratePDFRequestVo("AC2311090003", formData, moreSigners, flattenForm);
+
+        // Generate the test JSON
+        Map<String, Object> result = generateTestJson(requestVo);
+
+        // Print the JSON
+        printJson(result);
+    }
+}
