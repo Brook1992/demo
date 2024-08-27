@@ -1,0 +1,69 @@
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class PDFGenerator {
+
+    public static Map<String, Object> generateTestJson(GeneratePDFRequestVo requestVo) {
+        Map<String, Object> testjson = new HashMap<>();
+
+        // Directly copy relevant fields
+        testjson.put("applicationId", requestVo.getApplicationId());
+        testjson.put("templateId", "ACO_Offline_Sign_Signature_Card_Form-zh_hk-v1");
+        testjson.put("isRecycledTemplate", "Yes");
+        testjson.put("fileBusinessType", "ACO_Offline_Sign_Signature_Card_Form");
+        testjson.put("templateLanguage", "zh_hk");
+        testjson.put("templateVersion", "v2");
+        testjson.put("templateType", "PDF");
+
+        // Initialize formData as an empty list
+        List<Map<String, String>> formDataList = new ArrayList<>();
+
+        // Process the formData
+        Map<String, String> formData = requestVo.getFormData();
+        boolean shouldFlatten = "Yes".equals(requestVo.getFlatternForm().get("shouldFlatternFormData"));
+        
+        if (shouldFlatten) {
+            List<Map<String, String>> moreSigners = requestVo.getMoreSigners();
+            String flattenFlag = requestVo.getFlatternForm().get("flatternFalg");
+            int maxFlattenIndexPerPage = Integer.parseInt(requestVo.getFlatternForm().get("maxFlatternIndexPerPage"));
+
+            int signerIndex = 5;
+            int numPages = (int) Math.ceil((double) moreSigners.size() / maxFlattenIndexPerPage);
+
+            for (int pageIndex = 1; pageIndex <= numPages; pageIndex++) {
+                Map<String, String> pageFormData = new HashMap<>(formData);
+                int startIndex = (pageIndex - 1) * maxFlattenIndexPerPage;
+                int endIndex = Math.min(startIndex + maxFlattenIndexPerPage, moreSigners.size());
+
+                for (int i = startIndex; i < endIndex; i++) {
+                    Map<String, String> signer = moreSigners.get(i);
+                    int currentSignerIndex = signerIndex++;
+                    for (Map.Entry<String, String> entry : signer.entrySet()) {
+                        String key = entry.getKey();
+                        String value = entry.getValue().replace(":signer:", ":signer" + currentSignerIndex + ":");
+                        pageFormData.put(key + "_" + (i - startIndex + 1), value);
+                    }
+                }
+                
+                pageFormData.put("currentPageNo", String.valueOf(pageIndex));
+                pageFormData.put("pageTotalNo", String.valueOf(numPages));
+                pageFormData.put("applyDate", formData.get("SIGN002"));
+                
+                formDataList.add(pageFormData);
+            }
+        } else {
+            // No flattening needed, just add the original formData
+            Map<String, String> singlePageFormData = new HashMap<>(formData);
+            singlePageFormData.put("currentPageNo", "1");
+            singlePageFormData.put("pageTotalNo", "1");
+            singlePageFormData.put("applyDate", formData.get("SIGN002"));
+            formDataList.add(singlePageFormData);
+        }
+
+        testjson.put("formData", formDataList);
+
+        return testjson;
+    }
+}
